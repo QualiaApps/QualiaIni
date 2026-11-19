@@ -1,0 +1,148 @@
+name: Publish to Maven Central
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 发布的版本号，留空则取 gradle.properties 中的 lib.version
+        type: string
+        required: false
+      publishing_type:
+        description: automatic 上传后自动发布，user_managed 只上传等待在 Portal 手动点击发布
+        type: choice
+        options:
+          - automatic
+          - user_managed
+        default: automatic
+      dry_run:
+        description: 只构建与校验，不上传
+        type: boolean
+        default: false
+      create_release:
+        description: 发布成功后创建 GitHub Release 并附加产物
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maven-central-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION_INPUT: ${{ inputs.version }}
+      PUBLISHING_TYPE: ${{ inputs.publishing_type }}
+      MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version and coordinates
+        id: meta
+        run: |
+          VERSION="${VERSION_INPUT}"
+          if [ -z "${VERSION}" ]; then
+            VERSION="$(grep '^lib.version=' gradle.properties | cut -d= -f2)"
+          fi
+          GROUP="$(grep '^lib.group=' gradle.properties | cut -d= -f2)"
+          ARTIFACT="$(grep '^lib.artifact=' gradle.properties | cut -d= -f2)"
+          case "${VERSION}" in
+            "") echo "版本号为空" >&2; exit 1 ;;
+            *SNAPSHOT*) echo "快照版本不发布到 Central" >&2; exit 1 ;;
+          esac
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "group=${GROUP}" >> "$GITHUB_OUTPUT"
+          echo "artifact=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to republish an existing version
+        if: ${{ !inputs.dry_run }}
+        env:
+          GROUP: ${{ steps.meta.outputs.group }}
+          ARTIFACT: ${{ steps.meta.outputs.artifact }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          GROUP_PATH="$(printf '%s' "${GROUP}" | tr '.' '/')"
+          URL="https://repo1.maven.org/maven2/${GROUP_PATH}/${ARTIFACT}/${VERSION}/${ARTIFACT}-${VERSION}.pom"
+          CODE="$(curl --silent --output /dev/null --write-out '%{http_code}' "${URL}")"
+          if [ "${CODE}" = "200" ]; then
+            echo "${GROUP}:${ARTIFACT}:${VERSION} 已存在于 Maven Central，Central 不允许覆盖" >&2
+            exit 1
+          fi
+
+      - name: Require publishing secrets
+        if: ${{ !inputs.dry_run }}
+        run: |
+          MISSING=""
+          for NAME in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD SIGNING_KEY SIGNING_PASSWORD; do
+            if [ -z "${!NAME}" ]; then
+              MISSING="${MISSING} ${NAME}"
+            fi
+          done
+          if [ -n "${MISSING}" ]; then
+            echo "缺少仓库密钥:${MISSING}" >&2
+            exit 1
+          fi
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon --stacktrace "-Plib.version=${{ steps.meta.outputs.version }}"
+
+      - name: Check publication contents
+        env:
+          ARTIFACT: ${{ steps.meta.outputs.artifact }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          ls -l build/libs
+          for CLASSIFIER in "" "-sources" "-javadoc"; do
+            FILE="build/libs/${ARTIFACT}-${VERSION}${CLASSIFIER}.jar"
+            if [ ! -f "${FILE}" ]; then
+              echo "缺少产物 ${FILE}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Publish to Central staging
+        if: ${{ !inputs.dry_run }}
+        run: ./gradlew publish --no-daemon --stacktrace "-Plib.version=${{ steps.meta.outputs.version }}"
+
+      - name: Transfer deployment to the Portal
+        if: ${{ !inputs.dry_run }}
+        run: |
+          TOKEN="$(printf '%s:%s' "${MAVEN_CENTRAL_USERNAME}" "${MAVEN_CENTRAL_PASSWORD}" | base64 -w0)"
+          curl --fail --show-error --silent \
+            --request POST \
+            --max-time 600 \
+            --header "Authorization: Bearer ${TOKEN}" \
+            "https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/com.qiushui1012.lib?publishing_type=${PUBLISHING_TYPE}"
+
+      - name: Create GitHub release
+        if: ${{ !inputs.dry_run && inputs.create_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: v${{ steps.meta.outputs.version }}
+          generate_release_notes: true
+          files: build/libs/*.jar

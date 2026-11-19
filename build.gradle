@@ -1,0 +1,92 @@
+plugins {
+    id "java-library"
+    id "maven-publish"
+    id "signing"
+}
+
+group = project.property("lib.group")
+version = project.property("lib.version")
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform("org.junit:junit-bom:5.11.4")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType(JavaCompile).configureEach { JavaCompile task ->
+    task.options.encoding = "UTF-8"
+    task.options.release = 8
+}
+
+tasks.withType(Javadoc).configureEach { Javadoc task ->
+    task.options.encoding = "UTF-8"
+    (task.options as CoreJavadocOptions).addStringOption("Xdoclint:none", "-quiet")
+}
+
+tasks.named("test") { Test task ->
+    task.useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = project.property("lib.artifact")
+            pom {
+                name = project.property("lib.name")
+                description = project.property("lib.description")
+                url = project.property("lib.homepage")
+                licenses {
+                    license {
+                        name = project.property("lib.license")
+                        url = "https://opensource.org/licenses/MIT"
+                    }
+                }
+                developers {
+                    developer {
+                        id = project.property("lib.developer.id")
+                        name = project.property("lib.developer.name")
+                        url = project.property("lib.developer.url")
+                    }
+                }
+                scm {
+                    url = project.property("lib.sources")
+                    connection = "scm:git:${project.property("lib.sources")}.git"
+                    developerConnection = "scm:git:${project.property("lib.sources")}.git"
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "central"
+            url = "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
+            credentials {
+                username = findProperty("centralUsername") ?: System.getenv("MAVEN_CENTRAL_USERNAME")
+                password = findProperty("centralPassword") ?: System.getenv("MAVEN_CENTRAL_PASSWORD")
+            }
+        }
+    }
+}
+
+signing {
+    def signingKey = findProperty("signingKey") ?: System.getenv("SIGNING_KEY")
+    def signingPassword = findProperty("signingPassword") ?: System.getenv("SIGNING_PASSWORD")
+    required = signingKey != null
+    if (signingKey != null) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+        sign publishing.publications.mavenJava
+    }
+}
