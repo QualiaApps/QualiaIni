@@ -104,8 +104,8 @@ ini.writeTo(path);                      // 写入文件，自动创建父目录
 
 发布到 Maven Central 由手动触发的 `Publish to Maven Central` 工作流完成，入口在 Actions 页面。
 
-可填参数：`version` 留空则取 `gradle.properties` 的 `lib.version`；`namespace` 需与 Central Portal 命名空间列表一致；`publishing_type` 取 `automatic` 时上传后自动发布，取 `user_managed` 时只上传，需到 Portal 手动点发布；`dry_run` 只构建与校验；`create_release` 发布成功后创建 GitHub Release。
+可填参数：`version` 留空则取 `gradle.properties` 的 `lib.version`；`publishing_type` 取 `automatic` 时上传后自动发布，取 `user_managed` 时只上传，需到 Portal 手动点发布；`dry_run` 只构建与校验；`create_release` 发布成功后创建 GitHub Release。
 
-需要的仓库密钥为 `MAVEN_CENTRAL_USERNAME`、`MAVEN_CENTRAL_PASSWORD`（Portal 用户令牌）、`SIGNING_KEY`（ASCII 装甲私钥）、`SIGNING_PASSWORD`。
+需要的仓库密钥为 `MAVEN_CENTRAL_USERNAME`、`MAVEN_CENTRAL_PASSWORD`（central.sonatype.com 生成的用户令牌，旧的 OSSRH 令牌会返回 401）、`MAVEN_CENTRAL_SIGNING_KEY`、`MAVEN_CENTRAL_SIGNING_PASSWORD`。签名密钥用 ASCII 装甲私钥，其 Base64 编码同样可用；两者的行尾差异与转义换行由构建脚本统一处理。
 
-工作流先用 `maven-publish` 把产物上传到 OSSRH Staging API，再调用 `POST /manual/upload/defaultRepository/<namespace>` 把部署转入 Portal，缺少后一步时产物只会停留在 Staging API 一侧。上传前会查询 Central 上是否已存在同名版本，存在则直接失败，因为 Central 不允许覆盖已发布版本。
+工作流先用 `maven-publish` 把产物上传到 OSSRH Staging API，再调用 `POST /manual/upload/defaultRepository/com.qiushui1012.lib` 把部署转入 Portal，缺少后一步时产物只会停留在 Staging API 一侧。上传前会查询 Central 上是否已存在同名版本，存在则直接失败，因为 Central 不允许覆盖已发布版本。签名单独作为一步执行，签名失败与上传失败会在不同的步骤上报出。

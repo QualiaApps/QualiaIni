@@ -81,12 +81,33 @@ publishing {
     }
 }
 
+def rawSigningKey = (findProperty("signingKey") ?: System.getenv("MAVEN_CENTRAL_SIGNING_KEY"))?.toString()
+def rawSigningPassword = (findProperty("signingPassword") ?: System.getenv("MAVEN_CENTRAL_SIGNING_PASSWORD"))?.toString()
+def resolvedSigningKey = null
+
+if (rawSigningKey != null) {
+    resolvedSigningKey = rawSigningKey.replace("\\n", "\n").replace("\r\n", "\n").trim()
+    if (!resolvedSigningKey.contains("BEGIN PGP")) {
+        try {
+            def decoded = new String(resolvedSigningKey.decodeBase64(), "UTF-8").trim()
+            if (decoded.contains("BEGIN PGP")) {
+                resolvedSigningKey = decoded
+            }
+        } catch (Exception ignored) {
+        }
+    }
+    if (!resolvedSigningKey.contains("BEGIN PGP")) {
+        throw new GradleException(
+            "MAVEN_CENTRAL_SIGNING_KEY 既不是 ASCII 装甲私钥，也不是它的 Base64 编码，请检查密钥内容"
+        )
+    }
+    resolvedSigningKey = resolvedSigningKey + "\n"
+}
+
 signing {
-    def signingKey = findProperty("signingKey") ?: System.getenv("MAVEN_CENTRAL_SIGNING_KEY")
-    def signingPassword = findProperty("signingPassword") ?: System.getenv("MAVEN_CENTRAL_SIGNING_PASSWORD")
-    required = signingKey != null
-    if (signingKey != null) {
-        useInMemoryPgpKeys(signingKey, signingPassword)
+    required = resolvedSigningKey != null
+    if (resolvedSigningKey != null) {
+        useInMemoryPgpKeys(resolvedSigningKey, rawSigningPassword == null ? "" : rawSigningPassword)
         sign publishing.publications.mavenJava
     }
 }

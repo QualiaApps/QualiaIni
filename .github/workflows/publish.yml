@@ -119,6 +119,10 @@ jobs:
             fi
           done
 
+      - name: Sign artifacts
+        if: ${{ !inputs.dry_run }}
+        run: ./gradlew signMavenJavaPublication --no-daemon --stacktrace "-Plib.version=${{ steps.meta.outputs.version }}"
+
       - name: Publish to Central staging
         if: ${{ !inputs.dry_run }}
         run: ./gradlew publish --no-daemon --stacktrace "-Plib.version=${{ steps.meta.outputs.version }}"
