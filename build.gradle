@@ -82,8 +82,8 @@ publishing {
 }
 
 signing {
-    def signingKey = findProperty("signingKey") ?: System.getenv("SIGNING_KEY")
-    def signingPassword = findProperty("signingPassword") ?: System.getenv("SIGNING_PASSWORD")
+    def signingKey = findProperty("signingKey") ?: System.getenv("MAVEN_CENTRAL_SIGNING_KEY")
+    def signingPassword = findProperty("signingPassword") ?: System.getenv("MAVEN_CENTRAL_SIGNING_PASSWORD")
     required = signingKey != null
     if (signingKey != null) {
         useInMemoryPgpKeys(signingKey, signingPassword)

@@ -97,7 +97,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           MISSING=""
-          for NAME in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD SIGNING_KEY SIGNING_PASSWORD; do
+          for NAME in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD MAVEN_CENTRAL_SIGNING_KEY MAVEN_CENTRAL_SIGNING_PASSWORD; do
             if [ -z "${!NAME}" ]; then
               MISSING="${MISSING} ${NAME}"
             fi
