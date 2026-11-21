@@ -26,10 +26,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: maven-central-publish
-  cancel-in-progress: false
-
 jobs:
   publish:
     name: Build and Publish
@@ -41,8 +37,8 @@ jobs:
       PUBLISHING_TYPE: ${{ inputs.publishing_type }}
       MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
       MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-      SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+      MAVEN_CENTRAL_SIGNING_KEY: ${{ secrets.MAVEN_CENTRAL_SIGNING_KEY }}
+      MAVEN_CENTRAL_SIGNING_PASSWORD: ${{ secrets.MAVEN_CENTRAL_SIGNING_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -94,7 +90,6 @@ jobs:
           fi
 
       - name: Require publishing secrets
-        if: ${{ !inputs.dry_run }}
         run: |
           MISSING=""
           for NAME in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD MAVEN_CENTRAL_SIGNING_KEY MAVEN_CENTRAL_SIGNING_PASSWORD; do
